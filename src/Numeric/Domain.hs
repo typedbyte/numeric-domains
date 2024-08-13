@@ -187,11 +187,12 @@ isSingleton _            = False
 -- Equal domains are not considered as subsets.
 isSubsetOf :: Ord a => Domain a -> Domain a -> Bool
 isSubsetOf (Domain sub) (Domain whole) = go False 0 sub whole
-  where go smaller len []     domain = smaller || len < length domain
-        go smaller len (i:is) domain =
-          case find (`I.contains` i) domain of
-            Nothing -> False
-            Just wi -> go (smaller || wi /= i) (len + 1) is domain
+  where
+    go smaller len []     domain = smaller || len < length domain
+    go smaller len (i:is) domain =
+      case find (`I.contains` i) domain of
+        Nothing -> False
+        Just wi -> go (smaller || wi /= i) (len + 1) is domain
 
 -- | Checks if a domain contains a specific value.
 member :: Ord a => a -> Domain a -> Bool
@@ -216,20 +217,22 @@ sameElements (Domain xs) (Domain ys) =
 -- 'isInfinite').
 elems :: Enum a => Domain a -> Maybe [a]
 elems (Domain is) = go is
-  where go []     = Just []
-        go (i:rs) = do
-          xs <- I.elems i
-          ts <- go rs
-          pure (xs ++ ts)
+  where
+    go []     = Just []
+    go (i:rs) = do
+      xs <- I.elems i
+      ts <- go rs
+      pure (xs ++ ts)
 
 -- | Calculates the difference between two domains, i.e. @difference whole
 -- diff@ contains all elements of the domain @whole@ that are not in the domain
 -- @diff@.
 difference :: Dist a => Domain a -> Domain a -> Domain a
 difference (Domain whole) (Domain diff) = Domain (foldl go whole diff)
-  where go []     _ = []
-        go (r:rs) i =
-          I.difference r i ++ go rs i
+  where
+    go []     _ = []
+    go (r:rs) i =
+      I.difference r i ++ go rs i
 
 -- | Calculates the intersection of two domains, i.e. @intersect dx dy@
 -- contains all elements that are in both domains @dx@ and @dy@.
@@ -335,9 +338,10 @@ join
 join f (Domain xs) (Domain ys) =
   union empty (Domain is)
     where
-      is = do x <- xs
-              y <- ys
-              pure (f x y)
+      is = do
+        x <- xs
+        y <- ys
+        pure (f x y)
 
 abs :: (Dist a, Num a) => Domain a -> Domain a
 abs (Domain is) =
@@ -350,14 +354,15 @@ signum (Domain is) =
   foldl union empty (fmap intervalSignum is)
   where
     intervalSignum r =
-      let neg  | I.hasNegatives r = singleton (-1)
-               | otherwise        = empty
-          zero | I.member 0 r     = singleton 0
-               | otherwise        = empty
-          pos  | I.hasPositives r = singleton 1
-               | otherwise        = empty
+      let
+        neg  | I.hasNegatives r = singleton (-1)
+             | otherwise        = empty
+        zero | I.member 0 r     = singleton 0
+             | otherwise        = empty
+        pos  | I.hasPositives r = singleton 1
+             | otherwise        = empty
       in
-      union neg (union zero pos)
+        union neg (union zero pos)
 
 recip :: (Dist a, Fractional a) => Domain a -> Domain a
 recip (Domain is) =
@@ -369,9 +374,11 @@ recip (Domain is) =
       else
         case (I.hasNegatives r, I.hasPositives r) of
           (True, True) ->
-            let Domain li = interval B.infiniteLower recipLow
-                Domain hi = interval recipHigh B.infiniteUpper
-            in Domain (li ++ hi)
+            let
+              Domain li = interval B.infiniteLower recipLow
+              Domain hi = interval recipHigh B.infiniteUpper
+            in
+              Domain (li ++ hi)
           (True , False) -> interval B.infiniteLower recipLow
           (False, True ) -> interval recipHigh B.infiniteUpper
           (False, False) -> empty
@@ -389,22 +396,24 @@ recip (Domain is) =
 -- also mirrored to their negative counterparts.
 inverseAbs :: (Dist a, Num a) => Domain a -> Domain a
 inverseAbs domain = union positives negatives
-  where positives = intersect domain (greaterOrEqual 0)
-        negatives = negate positives
+  where
+    positives = intersect domain (greaterOrEqual 0)
+    negatives = negate positives
 
 -- | Calculates the inverse signum function of a domain, i.e. if the domain
 -- contains the values @(-1)@, @0@ and\/or @1@, the result is the union of
 -- negative infinity, zero and\/or positive infinity, respectively.
 inverseSignum :: (Dist a, Num a) => Domain a -> Domain a
 inverseSignum (Domain is) =
-  let neg  | any (I.member (-1)) is = lessThan 0
-           | otherwise              = empty
-      zero | any (I.member 0) is    = singleton 0
-           | otherwise              = empty
-      pos  | any (I.member 1) is    = greaterThan 0
-           | otherwise              = empty
+  let
+    neg  | any (I.member (-1)) is = lessThan 0
+         | otherwise              = empty
+    zero | any (I.member 0) is    = singleton 0
+         | otherwise              = empty
+    pos  | any (I.member 1) is    = greaterThan 0
+         | otherwise              = empty
   in
-  union neg (union zero pos)
+    union neg (union zero pos)
 
 -- | Calculates the integer division of two domains.
 div :: (Dist a, Integral a) => Domain a -> Domain a -> Domain a

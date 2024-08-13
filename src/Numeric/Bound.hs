@@ -92,34 +92,34 @@ newtype LowerBound a = LowerBound { unLowerBound :: Bound a }
   deriving (Eq, Show)
 
 instance Ord a => Ord (LowerBound a) where
-  compare (LowerBound x) (LowerBound y) =
-    case (x,y) of
-      (Open a, Closed b)   | a >= b       -> GT
-                           | otherwise    -> LT
-      (Closed a, Open b)   | a <= b       -> LT
-                           | otherwise    -> GT
-      (Open a, Open b)                    -> compare a b
-      (Closed a, Closed b)                -> compare a b
-      (Infinite, Infinite)                -> EQ
-      (_, Infinite)                       -> GT
-      (Infinite, _)                       -> LT
+  compare (LowerBound x) (LowerBound y) = go x y
+    where
+      go (Open a)   (Closed b) | a >= b    = GT
+                               | otherwise = LT
+      go (Closed a) (Open b)   | a <= b    = LT
+                               | otherwise = GT
+      go (Open a)   (Open b)               = compare a b
+      go (Closed a) (Closed b)             = compare a b
+      go Infinite   Infinite               = EQ
+      go _          Infinite               = GT
+      go Infinite   _                      = LT
 
 -- | The upper bound of an interval. Can be open, closed or positive infinity.
 newtype UpperBound a = UpperBound { unUpperBound :: Bound a }
   deriving (Eq, Show)
 
 instance Ord a => Ord (UpperBound a) where
-  compare (UpperBound x) (UpperBound y) =
-    case (x,y) of
-      (Open a, Closed b)   | a <= b    -> LT
-                           | otherwise -> GT
-      (Closed a, Open b)   | a >= b    -> GT
-                           | otherwise -> LT
-      (Open a, Open b)                 -> compare a b
-      (Closed a, Closed b)             -> compare a b
-      (Infinite, Infinite)             -> EQ
-      (_, Infinite)                    -> LT
-      (Infinite, _)                    -> GT
+  compare (UpperBound x) (UpperBound y) = go x y
+    where
+      go (Open a)   (Closed b) | a <= b    = LT
+                               | otherwise = GT
+      go (Closed a) (Open b)   | a >= b    = GT
+                               | otherwise = LT
+      go (Open a)   (Open b)               = compare a b
+      go (Closed a) (Closed b)             = compare a b
+      go Infinite   Infinite               = EQ
+      go _          Infinite               = LT
+      go Infinite   _                      = GT
 
 -- | Creates an open lower bound. Internally, the bound is converted to a
 -- closed one, if possible.
@@ -250,13 +250,13 @@ isZeroUpper = isZero . unUpperBound
 
 -- | Checks if a lower bound is above an upper bound.
 isAbove :: Ord a => LowerBound a -> UpperBound a -> Bool
-isAbove (LowerBound x) (UpperBound y) =
-  case (x,y) of
-    (Open a, Open b)     -> a >= b
-    (Open a, Closed b)   -> a >= b
-    (Closed a, Open b)   -> a >= b
-    (Closed a, Closed b) -> a > b
-    _                    -> False
+isAbove (LowerBound x) (UpperBound y) = go x y
+  where
+    go (Open a)   (Open b)   = a >= b
+    go (Open a)   (Closed b) = a >= b
+    go (Closed a) (Open b)   = a >= b
+    go (Closed a) (Closed b) = a > b
+    go _          _          = False
 
 -- | Checks if an upper bound is below a lower bound.
 isBelow :: Ord a => UpperBound a -> LowerBound a -> Bool
@@ -270,15 +270,17 @@ isSingleton _ _ = False
 -- | Enumerates all elements between a lower bound and an upper bound in
 -- ascending order according to the 'Enum' implementation of their value type.
 --
--- Returns 'Nothing' if any of the two bounds is infinite.
+-- Returns 'Nothing' if the lower bound is infinite.
 elems :: Enum a => LowerBound a -> UpperBound a -> Maybe [a]
-elems (LowerBound x) (UpperBound y) =
-  case (x,y) of
-    (Open a, Open b)     -> Just [succ a .. pred b]
-    (Open a, Closed b)   -> Just [succ a .. b]
-    (Closed a, Open b)   -> Just [a .. pred b]
-    (Closed a, Closed b) -> Just [a .. b]
-    _                    -> Nothing
+elems (LowerBound x) (UpperBound y) = go x y
+  where
+    go (Open a)   (Open b)   = Just [succ a .. pred b]
+    go (Open a)   (Closed b) = Just [succ a .. b]
+    go (Open a)   Infinite   = Just [succ a .. ]
+    go (Closed a) (Open b)   = Just [a .. pred b]
+    go (Closed a) (Closed b) = Just [a .. b]
+    go (Closed a) Infinite   = Just [a .. ]
+    go Infinite   _          = Nothing
 
 -- | Creates a lower bound that is adjacent to (i.e., directly above) a given
 -- upper bound.
@@ -323,55 +325,55 @@ minusUpper (LowerBound x) (UpperBound y) =
   LowerBound (apply (-) x y)
 
 apply :: (a -> a -> a) -> Bound a -> Bound a -> Bound a
-apply f x y =
-  case (x,y) of
-    (Open a, Open b)     -> Open (f a b)
-    (Open a, Closed b)   -> Open (f a b)
-    (Closed a, Open b)   -> Open (f a b)
-    (Closed a, Closed b) -> Closed (f a b)
-    _                    -> Infinite
+apply f x y = go x y
+  where
+    go (Open a)   (Open b)   = Open (f a b)
+    go (Open a)   (Closed b) = Open (f a b)
+    go (Closed a) (Open b)   = Open (f a b)
+    go (Closed a) (Closed b) = Closed (f a b)
+    go _          _          = Infinite
 
 -- | Multiplies the values of two lower bounds.
 timesLower :: (Num a, Ord a) => LowerBound a -> LowerBound a -> Result a
-timesLower l@(LowerBound x) r@(LowerBound y) =
-  case (x,y) of
-    (Open a, Open b)     -> bothOpen (a * b)
-    (Open a, Closed b)   -> bothOpen (a * b)
-    (Closed a, Open b)   -> bothOpen (a * b)
-    (Closed a, Closed b) -> bothClosed (a * b)
-    (Infinite, _)        -> inf r
-    (_, Infinite)        -> inf l
+timesLower l@(LowerBound x) r@(LowerBound y) = go x y
   where
+    go (Open a)   (Open b)   = bothOpen (a * b)
+    go (Open a)   (Closed b) = bothOpen (a * b)
+    go (Closed a) (Open b)   = bothOpen (a * b)
+    go (Closed a) (Closed b) = bothClosed (a * b)
+    go Infinite   _          = inf r
+    go _          Infinite   = inf l
+    
     inf b | isNegativeLower b   = Upper infiniteUpper
           | isClosedZeroLower b = Both (closedLower 0) (closedUpper 0)
           | otherwise           = Lower infiniteLower
 
 -- | Multiplies the values of two upper bounds.
 timesUpper :: (Num a, Ord a) => UpperBound a -> UpperBound a -> Result a
-timesUpper l@(UpperBound x) r@(UpperBound y) =
-  case (x,y) of
-    (Open a, Open b)     -> bothOpen (a * b)
-    (Open a, Closed b)   -> bothOpen (a * b)
-    (Closed a, Open b)   -> bothOpen (a * b)
-    (Closed a, Closed b) -> bothClosed (a * b)
-    (Infinite, _)        -> inf r
-    (_, Infinite)        -> inf l
+timesUpper l@(UpperBound x) r@(UpperBound y) = go x y
   where
+    go (Open a)   (Open b)   = bothOpen (a * b)
+    go (Open a)   (Closed b) = bothOpen (a * b)
+    go (Closed a) (Open b)   = bothOpen (a * b)
+    go (Closed a) (Closed b) = bothClosed (a * b)
+    go Infinite   _          = inf r
+    go _          Infinite   = inf l
+    
     inf b | isPositiveUpper b   = Upper infiniteUpper
           | isClosedZeroUpper b = Both (closedLower 0) (closedUpper 0)
           | otherwise           = Lower infiniteLower
 
 -- | Multiplies the value of a lower bound and the value of an upper bound.
 timesMixed :: (Num a, Ord a) => LowerBound a -> UpperBound a -> Result a
-timesMixed l@(LowerBound x) r@(UpperBound y) =
-  case (x,y) of
-    (Open a, Open b)     -> bothOpen (a * b)
-    (Open a, Closed b)   -> bothOpen (a * b)
-    (Closed a, Open b)   -> bothOpen (a * b)
-    (Closed a, Closed b) -> bothClosed (a * b)
-    (Infinite, _)        -> infLower r
-    (_, Infinite)        -> infUpper l
+timesMixed l@(LowerBound x) r@(UpperBound y) = go x y
   where
+    go (Open a)   (Open b)   = bothOpen (a * b)
+    go (Open a)   (Closed b) = bothOpen (a * b)
+    go (Closed a) (Open b)   = bothOpen (a * b)
+    go (Closed a) (Closed b) = bothClosed (a * b)
+    go Infinite   _          = infLower r
+    go _          Infinite   = infUpper l
+    
     infLower b | isPositiveUpper b   = Lower infiniteLower
                | isClosedZeroUpper b = Both (closedLower 0) (closedUpper 0)
                | otherwise           = Upper infiniteUpper
@@ -384,15 +386,15 @@ timesMixed l@(LowerBound x) r@(UpperBound y) =
 -- Note that it is not checked if the divisor bound is zero, which yields an
 -- error. Such a check must happen before calling this function.
 divLower :: Integral a => LowerBound a -> LowerBound a -> Result a
-divLower (LowerBound x) r@(LowerBound y) =
-  case (x,y) of
-    (Open a, Open b)     -> bothOpen   (a `div` b)
-    (Open a, Closed b)   -> bothOpen   (a `div` b)
-    (Closed a, Open b)   -> bothOpen   (a `div` b)
-    (Closed a, Closed b) -> bothClosed (a `div` b)
-    (Infinite, _)        -> inf r
-    (_, Infinite)        -> bothClosed 0
+divLower (LowerBound x) r@(LowerBound y) = go x y
   where
+    go (Open a)   (Open b)   = bothOpen   (a `div` b)
+    go (Open a)   (Closed b) = bothOpen   (a `div` b)
+    go (Closed a) (Open b)   = bothOpen   (a `div` b)
+    go (Closed a) (Closed b) = bothClosed (a `div` b)
+    go Infinite   _          = inf r
+    go _          Infinite   = bothClosed 0
+    
     inf b | isNegativeLower b = Upper infiniteUpper
           | otherwise         = Lower infiniteLower
 
@@ -401,15 +403,15 @@ divLower (LowerBound x) r@(LowerBound y) =
 -- Note that it is not checked if the divisor bound is zero, which yields an
 -- error. Such a check must happen before calling this function.
 divUpper :: Integral a => UpperBound a -> UpperBound a -> Result a
-divUpper (UpperBound x) r@(UpperBound y) =
-  case (x,y) of
-    (Open a, Open b)     -> bothOpen   (a `div` b)
-    (Open a, Closed b)   -> bothOpen   (a `div` b)
-    (Closed a, Open b)   -> bothOpen   (a `div` b)
-    (Closed a, Closed b) -> bothClosed (a `div` b)
-    (Infinite, _)        -> inf r
-    (_, Infinite)        -> bothClosed 0
+divUpper (UpperBound x) r@(UpperBound y) = go x y
   where
+    go (Open a)   (Open b)   = bothOpen   (a `div` b)
+    go (Open a)   (Closed b) = bothOpen   (a `div` b)
+    go (Closed a) (Open b)   = bothOpen   (a `div` b)
+    go (Closed a) (Closed b) = bothClosed (a `div` b)
+    go Infinite   _          = inf r
+    go _          Infinite   = bothClosed 0
+    
     inf b | isNegativeUpper b = Lower infiniteLower
           | otherwise         = Upper infiniteUpper
 
@@ -419,15 +421,15 @@ divUpper (UpperBound x) r@(UpperBound y) =
 -- Note that it is not checked if the divisor bound is zero, which yields an
 -- error. Such a check must happen before calling this function.
 divLowerUpper :: Integral a => LowerBound a -> UpperBound a -> Result a
-divLowerUpper (LowerBound x) r@(UpperBound y) =
-  case (x,y) of
-    (Open a, Open b)     -> bothOpen   (a `div` b)
-    (Open a, Closed b)   -> bothOpen   (a `div` b)
-    (Closed a, Open b)   -> bothOpen   (a `div` b)
-    (Closed a, Closed b) -> bothClosed (a `div` b)
-    (Infinite, _)        -> inf r
-    (_, Infinite)        -> bothClosed 0
+divLowerUpper (LowerBound x) r@(UpperBound y) = go x y
   where
+    go (Open a)   (Open b)   = bothOpen   (a `div` b)
+    go (Open a)   (Closed b) = bothOpen   (a `div` b)
+    go (Closed a) (Open b)   = bothOpen   (a `div` b)
+    go (Closed a) (Closed b) = bothClosed (a `div` b)
+    go Infinite   _          = inf r
+    go _          Infinite   = bothClosed 0
+    
     inf b | isNegativeUpper b = Upper infiniteUpper
           | otherwise         = Lower infiniteLower
 
@@ -437,15 +439,15 @@ divLowerUpper (LowerBound x) r@(UpperBound y) =
 -- Note that it is not checked if the divisor bound is zero, which yields an
 -- error. Such a check must happen before calling this function.
 divUpperLower :: Integral a => UpperBound a -> LowerBound a -> Result a
-divUpperLower (UpperBound x) r@(LowerBound y) =
-  case (x,y) of
-    (Open a, Open b)     -> bothOpen   (a `div` b)
-    (Open a, Closed b)   -> bothOpen   (a `div` b)
-    (Closed a, Open b)   -> bothOpen   (a `div` b)
-    (Closed a, Closed b) -> bothClosed (a `div` b)
-    (Infinite, _)        -> inf r
-    (_, Infinite)        -> bothClosed 0
+divUpperLower (UpperBound x) r@(LowerBound y) = go x y
   where
+    go (Open a)   (Open b)   = bothOpen   (a `div` b)
+    go (Open a)   (Closed b) = bothOpen   (a `div` b)
+    go (Closed a) (Open b)   = bothOpen   (a `div` b)
+    go (Closed a) (Closed b) = bothClosed (a `div` b)
+    go Infinite   _          = inf r
+    go _          Infinite   = bothClosed 0
+    
     inf b | isNegativeLower b = Lower infiniteLower
           | otherwise         = Upper infiniteUpper
 
@@ -517,12 +519,12 @@ recipLower = UpperBound . recipBound . unLowerBound
 --
 -- Infinite bounds (negative infinity, positive infinity) are never mergeable.
 mergeable :: Dist a => UpperBound a -> LowerBound a -> Bool
-mergeable (UpperBound x) (LowerBound y) =
-  case (x,y) of
-    (Open a, Closed b)   -> a == b
-    (Closed a, Open b)   -> a == b
-    (Closed a, Closed b) -> a == b || adjacent a b
-    _                    -> False
+mergeable (UpperBound x) (LowerBound y) = go x y
+  where
+    go (Open a)   (Closed b) = a == b
+    go (Closed a) (Open b)   = a == b
+    go (Closed a) (Closed b) = a == b || adjacent a b
+    go _          _          = False
 
 -- | Returns the greatest value of an upper bound.
 --

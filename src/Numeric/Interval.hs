@@ -163,18 +163,19 @@ difference whole@(Interval low high) diff =
   case intersect whole diff of
     Nothing -> [whole]
     Just di ->
-      let lowInterval = do
-            adjHigh <- B.adjacentUpper (lowerBound di)
-            interval low adjHigh
-          upInterval = do
-            adjLow <- B.adjacentLower (upperBound di)
-            interval adjLow high
+      let
+        lowInterval = do
+          adjHigh <- B.adjacentUpper (lowerBound di)
+          interval low adjHigh
+        upInterval = do
+          adjLow <- B.adjacentLower (upperBound di)
+          interval adjLow high
+        match (Just li) (Just ui) = [li, ui]
+        match (Just li) Nothing   = [li]
+        match Nothing   (Just ui) = [ui]
+        match Nothing   Nothing   = []
       in
-      case (lowInterval, upInterval) of
-        (Just li, Just ui) -> [li, ui]
-        (Just li, Nothing) -> [li]
-        (Nothing, Just ui) -> [ui]
-        (Nothing, Nothing) -> []
+        match lowInterval upInterval
 
 -- | Merges two intervals into one if they overlap or if they have adjacent
 -- bounds.
